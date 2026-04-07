@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circle Master: Evolution</title>
+    <style>
+        :root { --neon-blue: #00e5ff; --neon-pink: #ff007f; --neon-yellow: #fff700; }
+        body {
+            background-color: #0a0a0c; color: #fff;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex; margin: 0; height: 100vh; overflow: hidden; touch-action: none;
+        }
+        #game-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #sidebar {
+            width: 280px; background: rgba(20, 20, 25, 0.8); backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255, 255, 255, 0.1); padding: 30px; z-index: 20;
+        }
+        #ui-layer { position: absolute; top: 50px; text-align: center; pointer-events: none; z-index: 10; width: 100%; }
+        #score-display {
+            font-size: 5.5rem; font-weight: 900; color: var(--neon-blue);
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.6); transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #rank-text { font-size: 1.5rem; font-weight: bold; letter-spacing: 5px; margin-top: -10px; color: #aaa; }
+        #timer-container { width: 300px; height: 4px; background: #222; border-radius: 2px; margin: 20px auto; position: relative; }
+        #timer-bar { width: 100%; height: 100%; background: linear-gradient(90deg, var(--neon-blue), var(--neon-pink)); border-radius: 2px; }
+        
+        .score-item {
+            display: flex; justify-content: space-between; padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05); font-family: 'Courier New', Courier, monospace;
+        }
+        .rank-num { color: var(--neon-pink); font-weight: bold; }
+        canvas { position: absolute; top: 0; left: 0; }
+        .guide-msg { position: absolute; bottom: 40px; opacity: 0.5; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui-layer">
+            <div id="score-display">Ready?</div>
+            <div id="rank-text">DRAW A CIRCLE</div>
+            <div id="timer-container"><div id="timer-bar"></div></div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="guide-msg">한 번에 매끄럽게 그려보세요!</div>
+    </div>
+
+    <div id="sidebar">
+        <h2 style="color: var(--neon-pink); font-size: 1.5rem; margin-bottom: 20px;">HALL OF FAME</h2>
+        <div id="score-list"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const rankText = document.getElementById('rank-text');
+        const timerBar = document.getElementById('timer-bar');
+
+        let width, height, centerX, centerY;
+        const radius = 180;
+        let drawing = false;
+        let points = [];
+        let startTime = 0;
+        let timerInterval = null;
+        const TIME_LIMIT = 5000;
+
+        function resize() {
+            width = window.innerWidth - (window.innerWidth > 800 ? 280 : 0);
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            centerX = width / 2;
+            centerY = height / 2;
+            drawScene();
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function drawScene() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // 가이드라인 (부드러운 빛)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 15]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 중심점 (코어)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = drawing ? '#ff007f' : '#00e5ff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 그린 선 (네온 효과)
+            if (points.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                ctx.strokeStyle = '#00e5ff';
+                ctx.lineWidth = 12;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#00e5ff';
+                
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function startDrawing(e) {
+            if (drawing) return;
+            drawing = true;
+            points = [];
+            scoreDisplay.style.transform = "scale(0.8)";
+            scoreDisplay.innerText = "0.0";
+            rankText.innerText = "DRAWING...";
+            
+            const pos = getPos(e);
+            points.push(pos);
+            startTime = Date.now();
+            
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.max(0, 100 - (elapsed / TIME_LIMIT * 100));
+                timerBar.style.width = progress + '%';
+                if (elapsed >= TIME_LIMIT) endDrawing();
+            }, 16);
+        }
+
+        function moveDrawing(e) {
+            if (!drawing) return;
+            const pos = getPos(e);
+            const lastPos = points[points.length - 1];
+            if (Math.hypot(pos.x - lastPos.x, pos.y - lastPos.y) > 3) {
+                points.push(pos);
+                drawScene();
+            }
+        }
+
+        function endDrawing() {
+            if (!drawing) return;
+            drawing = false;
+            clearInterval(timerInterval);
+            timerBar.style.width = '100%';
+            calculateScore();
+        }
+
+        function getPos(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX, y: clientY };
+        }
+
+        function calculateScore() {
+            if (points.length < 15) {
+                scoreDisplay.innerText = "FAIL";
+                rankText.innerText = "TOO SHORT!";
+                return;
+            }
+
+            const distances = points.map(p => Math.hypot(p.x - centerX, p.y - centerY));
+            const avgDist = distances.reduce((a, b) => a + b) / distances.length;
+            
+            // 1. 정확도 (너그러운 판정: 오차 10px까지는 감점 최소화)
+            const distError = Math.max(0, Math.abs(avgDist - radius) - 5); 
+
+            // 2. 일관성 (찌그러짐 방지)
+            const variance = distances.reduce((a, b) => a + Math.pow(b - avgDist, 2), 0) / distances.length;
+            const stdDev = Math.sqrt(variance);
+
+            // 3. 커버리지 (한 바퀴 다 그렸나?)
+            const start = points[0];
+            const end = points[points.length - 1];
+            const gap = Math.hypot(start.x - end.x, start.y - end.y);
+
+            // 점수 공식 보정 (더 후하게!)
+            let score = 100;
+            score -= (distError * 0.8); // 감점폭 완화
+            score -= (stdDev * 2.5);    // 감점폭 완화
+            score -= (gap / 20);
+
+            const finalScore = Math.max(0, Math.min(100, score));
+            animateScore(finalScore);
+        }
+
+        function animateScore(target) {
+            let current = 0;
+            const duration = 1000;
+            const start = Date.now();
+
+            const timer = setInterval(() => {
+                const now = Date.now();
+                const progress = Math.min(1, (now - start) / duration);
+                current = progress * target;
+                scoreDisplay.innerText = current.toFixed(1);
+                
+                if (progress === 1) {
+                    clearInterval(timer);
+                    showRank(target);
+                    saveScore(target);
+                }
+            }, 16);
+        }
+
+        function showRank(score) {
+            scoreDisplay.style.transform = "scale(1.1)";
+            if (score >= 95) { rankText.innerText = "PERFECT!"; scoreDisplay.style.color = "#fff700"; }
+            else if (score >= 85) { rankText.innerText = "EXCELLENT"; scoreDisplay.style.color = "#00e5ff"; }
+            else if (score >= 70) { rankText.innerText = "GREAT"; scoreDisplay.style.color = "#00ff7f"; }
+            else { rankText.innerText = "GOOD"; scoreDisplay.style.color = "#aaa"; }
+        }
+
+        function saveScore(score) {
+            let scores = JSON.parse(localStorage.getItem('circleMasterBest') || '[]');
+            scores.push(score);
+            scores.sort((a, b) => b - a);
+            scores = scores.slice(0, 10);
+            localStorage.setItem('circleMasterBest', JSON.stringify(scores));
+            renderLeaderboard();
+        }
+
+        function renderLeaderboard() {
+            const list = document.getElementById('score-list');
+            const scores = JSON.parse(localStorage.getItem('circleMasterBest') || '[]');
+            list.innerHTML = scores.map((s, i) => `
+                <div class="score-item">
+                    <span><span class="rank-num">${i+1}</span> BEST</span>
+                    <span>${s.toFixed(1)}</span>
+                </div>
+            `).join('');
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        window.addEventListener('mousemove', moveDrawing);
+        window.addEventListener('mouseup', endDrawing);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e); }, {passive: false});
+        window.addEventListener('touchmove', (e) => { moveDrawing(e); }, {passive: false});
+        window.addEventListener('touchend', endDrawing);
+
+        renderLeaderboard();
+    </script>
+</body>
+</html>
