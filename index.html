@@ -35,13 +35,12 @@
         #scene-title { justify-content: center; }
         .title-btn-group { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 240px; }
         
-        /* 결과 화면 레이아웃 최적화 */
         #scene-result { justify-content: center; }
         .result-content-wrapper {
             display: flex; flex-direction: column; align-items: center;
             justify-content: center;
             width: 100%;
-            pointer-events: none; /* 배경 터치 통과 */
+            pointer-events: none;
         }
 
         .score-info-group { 
@@ -50,11 +49,10 @@
         }
         #result-score { font-size: 6.5rem; font-weight: 900; margin: 0; color: var(--theme-color); text-shadow: 0 0 30px var(--theme-color); }
 
-        /* 하단 액션바: 원의 궤적을 침범하지 않도록 여백 조정 */
         .bottom-action-bar { 
             margin-top: 20px; 
             display: flex; flex-direction: column; align-items: center; gap: 15px; 
-            pointer-events: auto; /* 버튼만 클릭 허용 */
+            pointer-events: auto;
         }
         .horizontal-btns { display: flex; gap: 10px; }
 
@@ -162,7 +160,8 @@
     </div>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxdFhNWueOg5sTcmDjlr1jUBxyKLoV1Mxh-CwjyAenKXp9AFR5qJHGcSIL-dNAAk6Xk/exec";
+        // 새로운 보안 웹 앱 주소
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzOD-tWiv8LQna7VenzPdkIKNsRKhEDjrz-3GHR3HTEK2dFwLCsA2sQ-qUPUVzgYfrG/exec";
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const hudTimer = document.getElementById('hud-timer');
@@ -199,20 +198,12 @@
             ctx.scale(dpr, dpr);
             centerX = width / 2;
             centerY = height / 2;
-            
             radius = Math.min(width * 0.4, 220);
 
-            // 레이아웃 위치 동적 보정 (원 아래로 밀기)
             const resultWrapper = document.getElementById('result-wrapper');
             const actionBar = document.getElementById('action-bar');
-            if (resultWrapper) {
-                // 점수 위치를 원의 중심에서 살짝 아래로
-                resultWrapper.style.paddingTop = "0"; 
-            }
-            if (actionBar) {
-                // 버튼 그룹을 원의 반지름보다 확실히 아래로 배치
-                actionBar.style.marginTop = (radius * 0.5) + "px";
-            }
+            if (resultWrapper) resultWrapper.style.paddingTop = "0"; 
+            if (actionBar) actionBar.style.marginTop = (radius * 0.5) + "px";
             
             refreshCanvas();
         }
@@ -327,6 +318,7 @@
         
         window.addEventListener('touchend', endDrawing);
 
+        // 클라이언트 사이드 계산 (화면 표시용)
         function calculate() {
             const dists = points.map(p => Math.hypot(p.x - centerX, p.y - centerY));
             const errors = dists.map(d => Math.abs(d - radius));
@@ -344,7 +336,7 @@
             const coverage = bins.filter(b => b).length / 24;
             const startPos = points[0]; const endPos = points[points.length - 1];
             const gap = Math.hypot(startPos.x - endPos.x, startPos.y - endPos.y);
-            const gapPenalty = Math.pow(gap / 12, 1.5); 
+            const gapPenalty = Math.pow(gap / (radius / 18), 1.5); 
             currentFinalScore = ((baseScore - gapPenalty) * Math.pow(coverage, 1.5)).toFixed(2);
             showResult(currentFinalScore);
         }
@@ -365,22 +357,53 @@
             requestAnimationFrame(step);
         }
 
+        // [핵심 변경] POST 방식으로 좌표 전송하여 서버 사이드 검증
         async function handleSaveScore() {
-            const name = document.getElementById('nickname').value.trim(); if (!name) return;
-            const btn = document.getElementById('save-btn'); btn.innerText = "WAIT..."; btn.disabled = true;
+            const name = document.getElementById('nickname').value.trim(); 
+            if (!name || points.length === 0) return;
+            
+            const btn = document.getElementById('save-btn'); 
+            btn.innerText = "VERIFYING..."; 
+            btn.disabled = true;
+
             try {
-                const url = `${GAS_URL}?action=save&name=${encodeURIComponent(name)}&score=${currentFinalScore}`;
-                fetch(url, { mode: 'no-cors' });
-                btn.innerText = "DONE ✔"; btn.style.backgroundColor = "var(--theme-color)"; btn.style.color = "#000";
+                // 점수 수치 대신 원본 데이터(좌표, 반지름, 중심점)를 전송
+                const payload = {
+                    action: 'save',
+                    name: name,
+                    points: points.map(p => ({x: parseFloat(p.x.toFixed(1)), y: parseFloat(p.y.toFixed(1))})), // 소수점 최적화로 용량 감소
+                    radius: radius,
+                    centerX: centerX,
+                    centerY: centerY
+                };
+
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // POST 방식의 제한으로 인한 응답 확인 불가 대응
+                    cache: 'no-cache',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // no-cors 모드에서는 응답을 읽을 수 없으므로 성공 처리로 간주하고 대기
+                btn.innerText = "DONE ✔"; 
+                btn.style.backgroundColor = "var(--theme-color)"; 
+                btn.style.color = "#000";
                 setTimeout(() => { document.getElementById('name-input-wrap').style.display = "none"; }, 1000);
-            } catch (e) { btn.innerText = "FAILED"; btn.disabled = false; }
+            } catch (e) { 
+                console.error(e);
+                btn.innerText = "FAILED"; 
+                btn.disabled = false; 
+            }
         }
 
         async function loadRankFromServer() {
             const list = document.getElementById('rank-list'); const loader = document.getElementById('rank-loader');
             list.innerHTML = ""; loader.style.display = "block";
             try {
-                const response = await fetch(`${GAS_URL}?action=get`); const data = await response.json();
+                // 랭킹은 GET 방식 유지
+                const response = await fetch(`${GAS_URL}?action=get`); 
+                const data = await response.json();
                 list.innerHTML = data.map((item, i) => `<div class="rank-item"><span>0${i+1} <b>${item[0]}</b></span><b>${parseFloat(item[1]).toFixed(2)}</b></div>`).join('');
             } catch (e) { list.innerHTML = "<div class='loading-text'>ERROR</div>"; }
             finally { loader.style.display = "none"; }
