@@ -26,32 +26,36 @@
 
         .scene {
             position: absolute; width: 100%; height: 100%;
-            display: none; /* 물리적 간섭 제거 */
+            display: none; 
             flex-direction: column; align-items: center;
             z-index: 10; opacity: 0; pointer-events: none; transition: opacity 0.4s ease;
         }
         .scene.active { display: flex; opacity: 1; pointer-events: auto; }
 
         #scene-title { justify-content: center; }
-        /* 버튼 그룹 레이아웃 보정 */
-        .title-btn-group { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            gap: 12px; 
-            width: 240px; 
-        }
+        .title-btn-group { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 240px; }
         
+        /* 결과 화면 레이아웃 최적화 */
         #scene-result { justify-content: center; }
         .result-content-wrapper {
             display: flex; flex-direction: column; align-items: center;
             justify-content: center;
+            width: 100%;
+            pointer-events: none; /* 배경 터치 통과 */
         }
 
-        .score-info-group { display: flex; flex-direction: column; align-items: center; }
+        .score-info-group { 
+            display: flex; flex-direction: column; align-items: center; 
+            pointer-events: none;
+        }
         #result-score { font-size: 6.5rem; font-weight: 900; margin: 0; color: var(--theme-color); text-shadow: 0 0 30px var(--theme-color); }
 
-        .bottom-action-bar { margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        /* 하단 액션바: 원의 궤적을 침범하지 않도록 여백 조정 */
+        .bottom-action-bar { 
+            margin-top: 20px; 
+            display: flex; flex-direction: column; align-items: center; gap: 15px; 
+            pointer-events: auto; /* 버튼만 클릭 허용 */
+        }
         .horizontal-btns { display: flex; gap: 10px; }
 
         .btn {
@@ -59,7 +63,7 @@
             color: #fff; border-radius: 2px; font-size: 0.75rem;
             font-weight: 700; cursor: pointer; transition: 0.3s; letter-spacing: 2px;
             text-transform: uppercase; outline: none; box-sizing: border-box;
-            width: 100%; /* 너비 보정 */
+            width: 100%;
         }
         .btn:hover { background: #fff; color: #000; border-color: #fff; }
         .btn-main { border-width: 2px; border-color: #fff; padding: 18px 0; font-size: 0.85rem; }
@@ -69,7 +73,7 @@
         .btn-theme { border-color: var(--theme-color); color: var(--theme-color); }
         .btn-theme:hover { background: var(--theme-color); color: #000; }
 
-        #name-input-wrap { margin-top: 20px; display: flex; flex-direction: column; align-items: center; }
+        #name-input-wrap { margin-top: 20px; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
         #nickname {
             background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
             color: #fff; padding: 12px; text-align: center; border-radius: 2px;
@@ -120,7 +124,7 @@
     </div>
 
     <div id="scene-result" class="scene">
-        <div class="result-content-wrapper">
+        <div id="result-wrapper" class="result-content-wrapper">
             <div class="score-info-group">
                 <h2 id="result-score">0.00</h2>
             </div>
@@ -130,7 +134,7 @@
                 <button id="save-btn" onclick="handleSaveScore()" class="btn btn-theme" style="margin-top: 15px; padding: 12px; width: 100%; font-size: 0.7rem;">Register Score</button>
             </div>
 
-            <div class="bottom-action-bar">
+            <div id="action-bar" class="bottom-action-bar">
                 <div class="horizontal-btns">
                     <button onclick="startGame()" class="btn btn-action">Retry</button>
                     <button onclick="goTitle()" class="btn btn-action btn-red">Exit</button>
@@ -195,7 +199,21 @@
             ctx.scale(dpr, dpr);
             centerX = width / 2;
             centerY = height / 2;
+            
             radius = Math.min(width * 0.4, 220);
+
+            // 레이아웃 위치 동적 보정 (원 아래로 밀기)
+            const resultWrapper = document.getElementById('result-wrapper');
+            const actionBar = document.getElementById('action-bar');
+            if (resultWrapper) {
+                // 점수 위치를 원의 중심에서 살짝 아래로
+                resultWrapper.style.paddingTop = "0"; 
+            }
+            if (actionBar) {
+                // 버튼 그룹을 원의 반지름보다 확실히 아래로 배치
+                actionBar.style.marginTop = (radius * 0.5) + "px";
+            }
+            
             refreshCanvas();
         }
 
@@ -235,7 +253,10 @@
             document.getElementById('scene-title').classList.add('active');
         }
 
-        function openMenu() { document.getElementById('overlay').classList.add('active'); loadRankFromServer(); }
+        function openMenu() { 
+            document.getElementById('overlay').classList.add('active'); 
+            loadRankFromServer(); 
+        }
         function closeMenu() { document.getElementById('overlay').classList.remove('active'); }
 
         function isUIActive() {
